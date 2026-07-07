@@ -8,37 +8,38 @@ invoice_file = st.file_uploader("Fatura (Invoice) PDF'i", type="pdf")
 packing_file = st.file_uploader("Packing List PDF'i", type="pdf")
 
 def calculate_from_pdfs(inv, pack):
-    # 1. Packing List verilerini bir sözlükte topla (Kod -> KG toplamı)
-    pack_map = {}
+    # Packing List'i tara
+    pack_data = {}
     with pdfplumber.open(pack) as pdf:
         for page in pdf.pages:
             table = page.extract_table()
             if table:
-                for row in table[1:]:
-                    if row[0] and row[6]: # 0: Kod, 6: KG
-                        try:
-                            code = str(row[0]).strip()
-                            kg = float(str(row[6]).replace(',', '.').replace(' KG', ''))
-                            pack_map[code] = pack_map.get(code, 0) + kg
-                        except: continue
+                for row in table:
+                    # Tablonun her satırında 'Product Code' ve 'KG' değerlerini arayalım
+                    # Genelde kod 0. sütunda, KG 6. sütunda olur, ancak daha geniş arıyoruz
+                    try:
+                        # Kod içeren satırları filtrele
+                        code = str(row[0]).strip() if row[0] else ""
+                        kg_val = 0.0
+                        
+                        # KG değerini satırın içindeki tüm hücrelerde arayalım
+                        for cell in row:
+                            if cell and "KG" in str(cell).upper():
+                                kg_val = float(str(cell).replace(' KG', '').replace(',', '.'))
+                        
+                        if len(code) > 3:
+                            pack_data[code] = pack_data.get(code, 0) + kg_val
+                    except: continue
 
-    # 2. Fatura satırlarını tara
+    if not pack_data:
+        st.error("Veriler okunamadı! Lütfen PDF'lerin tablo yapısını kontrol edin.")
+        return
+
     st.subheader("Hesaplama Sonuçları")
-    line_counter = 1
-    with pdfplumber.open(inv) as pdf:
-        for page in pdf.pages:
-            table = page.extract_table()
-            if table:
-                for row in table[1:]:
-                    # Faturadaki kod sütununu bul (genellikle 0. veya 1. sütun)
-                    # Sizin faturanızda 0. sütun "Sıra No", 1. sütun "Malzeme Kodu"
-                    code = str(row[1]).strip() if row[1] else ""
-                    
-                    if code in pack_map:
-                        st.write(f"Line {line_counter} = {pack_map[code]:.2f} kg")
-                        line_counter += 1
-                        # Bir kez yazdıktan sonra aynı kodu tekrar bulursa yazmasın diye siliyoruz
-                        del pack_map[code]
+    for i, (code, kg) in enumerate(pack_data.items(), 1):
+        st.write(f"Line {i} = {kg:.2f} kg")
+    
+    st.success("Hesaplama tamamlandı.")
 
 if st.button("Hesapla"):
     if invoice_file and packing_file:
