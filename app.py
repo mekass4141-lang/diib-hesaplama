@@ -14,19 +14,23 @@ def calculate_from_pdfs(inv, pack):
             table = page.extract_table()
             if table:
                 for row in table:
-                    # row[6] Total Net (Kg) sütunudur
+                    # row[0] = Ürün Kodu, row[6] = KG
                     try:
+                        code = str(row[0]).strip()
                         kg = float(str(row[6]).replace(',', '.').replace(' KG', ''))
-                        if kg > 0:
-                            pack_data.append(kg)
+                        if len(code) > 3 and kg > 0:
+                            pack_data.append({"code": code, "kg": kg})
                     except:
                         continue
     
-    # Sizin kuralınıza göre: Tekrarlı ürün kodlarını önemsemeden 
-    # satırları tek tek topluyoruz.
+    # 6 satır yerine sadece benzersiz ürün kodlarını grupla
+    df = pd.DataFrame(pack_data)
+    grouped = df.groupby("code")["kg"].sum().reset_index()
+
     st.subheader("Hesaplama Sonuçları")
-    for i, kg in enumerate(pack_data, 1):
-        st.write(f"Line {i} = {kg:.2f} kg")
+    # Gruplanmış veriyi yazdır
+    for i, row in grouped.iterrows():
+        st.write(f"Line {i+1} ({row['code']}) = {row['kg']:.2f} kg")
 
 if st.button("Hesapla"):
     if invoice_file and packing_file:
