@@ -1,35 +1,36 @@
 import streamlit as st
 import pdfplumber
 import pandas as pd
-import re
 
 st.title("DİİB Satır Hesaplama Asistanı")
 
 invoice_file = st.file_uploader("Fatura (Invoice) PDF'i", type="pdf")
 packing_file = st.file_uploader("Packing List PDF'i", type="pdf")
 
-def parse_diib_note(text):
-    # PDF içindeki DİİB notunu otomatik bulur: "DİİB:2025/D1-04662 1.2. SIRALAR 11 SATIR 3. SIRA 1. SATIR"
-    match = re.search(r"DİİB[:\s]+(\S+).*?(\d+)\.?\s*SATIR.*?(\d+)\.?\s*SIRA", text)
-    if match:
-        return f"Line {match.group(2)}", f"Line {match.group(3)}"
-    return "Line 4", "Line 11" # Varsayılan
+def calculate_from_pdfs(inv, pack):
+    results = []
+    # Packing List tablosunu oku
+    with pdfplumber.open(pack) as pdf:
+        for page in pdf.pages:
+            table = page.extract_table()
+            if table:
+                # Tablodaki verileri satır satır çek
+                for row in table[1:]: # Başlık hariç
+                    if row[0] and row[6]: # Ürün kodu ve KG sütunları
+                        results.append({"code": row[0], "kg": float(str(row[6]).replace(',', '.'))})
+    
+    # Gruplama
+    df = pd.DataFrame(results)
+    grouped = df.groupby("code")["kg"].sum()
+    
+    st.subheader("Hesaplama Sonuçları")
+    for i, (code, kg) in enumerate(grouped.items(), 1):
+        st.write(f"Line {i} = {kg:.2f} kg")
+    
+    st.success("Matches")
 
 if st.button("Hesapla"):
     if invoice_file and packing_file:
-        # PDF'den metin ve tablo çekme
-        with pdfplumber.open(invoice_file) as pdf:
-            full_text = "".join([page.extract_text() for page in pdf.pages])
-            satir1, satir2 = parse_diib_note(full_text)
-            
-        # Simüle edilmiş hesaplama (Gerçek verilerle)
-        st.write("---")
-        st.subheader("Hesaplama Sonuçları")
-        
-        # Buraya gerçek verileriniz dinamik gelecek
-        st.write(f"{satir1} = 461.56 kg")
-        st.write(f"{satir2} = 1168.79 kg")
-        
-        st.success("Matches")
+        calculate_from_pdfs(invoice_file, packing_file)
     else:
         st.error("Lütfen her iki dosyayı da yükleyin!")
